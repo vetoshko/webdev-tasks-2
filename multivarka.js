@@ -1,20 +1,17 @@
 const MongoClient = require('mongodb').MongoClient;
 
-function addCondition(object, goodOperator, badOperator, value) {
-    var conditionParameter = {};
-    if (object.denial) {
-        conditionParameter[badOperator] = value;
-        object.request[object.conditionWord] = conditionParameter;
-        object.denial = false;
-    } else {
-        conditionParameter[goodOperator] = value;
-        object.request[object.conditionWord] = conditionParameter;
-    }
-    return object;
+function execute(action, callback) {
+    connectToMongo(this, function (err, collection, db, condition) {
+        if (err) {
+            callback(err);
+        } else {
+            action(callback, collection, db, condition)
+        }
+   });
 };
 
 function connectToMongo(obj, callback) {
-    MongoClient.connect(obj.url, function (err, db) {
+    MongoClient.connect(obj._url, function (err, db) {
         if (err) {
             callback(err);
         } else {
@@ -24,9 +21,19 @@ function connectToMongo(obj, callback) {
     });
 };
 
+addCondition = function (operator, value) {
+    var conditionParameter = {};
+    this.request[this.conditionWord] = conditionParameter;
+    conditionParameter[operator] = value;
+    if (this.denial) {
+        this.denial = false;
+    }
+    return this;
+},
+
 module.exports = {
     server: function (uri) {
-        this.url = uri;
+        this._url = uri;
         this.request = {};
         this.denial = false;
         this.setData = {};
@@ -49,71 +56,59 @@ module.exports = {
         return this;
     },
     equal: function (value) {
-        return addCondition(this, '$eq', '$gte', value);
+        var operator = this.denial ? '$gte' : '$eq';
+        return addCondition.bind(this)(operator, value);
     },
     lessThan: function (value) {
-        return addCondition(this, '$lt', '$ne', value);
+        var operator = this.denial ? '$ne' : '$lt';
+        return addCondition.bind(this)(operator, value);
     },
     greatThan: function (value) {
-        return addCondition(this, '$ge', '$lte', value);
+        var operator = this.denial ? '$lte' : '$ge';
+        return addCondition.bind(this)(operator, value);
     },
     include: function (values) {
-        return addCondition(this, '$in', '$nin', values);
+        var operator = this.denial ? '$nin' : '$in';
+        return addCondition.bind(this)(operator, values);
     },
-    remove: function(callback) {
-        connectToMongo(this, function (err, collection, db, condition) {
-            if (err) {
-                callback(err);
-            } else {
-                collection.deleteMany(condition, function (err, docs) {
-                    callback(err, docs);
-                    db.close();
-                    this.request = {};
-                });
-            }
-        });
+    remove: function(callback){
+        execute.bind(this)(function(callback, collection, db, condition){
+            collection.deleteMany(condition, function (err, docs) {
+                callback(err, docs);
+                db.close();
+                this.request = {};
+            });
+        }, callback)
     },
-    find: function (callback) {
-        connectToMongo(this, function (err, collection, db, condition) {
-            if (err) {
-                callback(err);
-            } else {
-                collection.find(condition).toArray(function (err, docs) {
-                    callback(err, docs);
-                    db.close();
-                    this.request = {};
-                });
-            }
-        });
+    find: function(callback){
+        execute.bind(this)(function(callback, collection, db, condition){
+            collection.find(condition).toArray(function (err, docs) {
+                callback(err, docs);
+                db.close();
+                this.request = {};
+            });
+        }, callback)
     },
-    update: function (callback) {
-        connectToMongo(this, function (err, collection, db, condition) {
-            if (err) {
-                callback(err);
-            } else {
-                var updateObj = {};
-                updateObj.$set = this.set;
-                updateObj.$currentDate = {lastModified: true};
-                collection.update(condition, updateObj, function (err, docs) {
-                    callback(err, docs);
-                    db.close();
-                    this.request = {};
-                    this.setData = {};
-                });
-            }
-        });
+    update: function(callback){
+        execute.bind(this)(function(callback, collection, db, condition){
+            var updateObj = {};
+            updateObj.$set = this.set;
+            updateObj.$currentDate = {lastModified: true};
+            collection.update(condition, updateObj, function (err, docs) {
+                callback(err, docs);
+                db.close();
+                this.request = {};
+                this.setData = {};
+            });
+        }, callback)
     },
-    insert: function (newRecord, callback) {
-        connectToMongo(this, function (err, collection, db, condition) {
-            if (err) {
-                callback(err);
-            } else {
-                collection.insert(newRecord, function (err, docs) {
-                    callback(err, docs);
-                    db.close();
-                    this.request = {};
-                });
-            }
-        });
+    insert: function(newRecord, callback){
+        execute.bind(this)(function(callback, collection, db, condition){
+            collection.insert(newRecord, function (err, docs) {
+                callback(err, docs);
+                db.close();
+                this.request = {};
+            });
+        }, callback)
     }
 };

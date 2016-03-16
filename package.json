@@ -6,5 +6,8 @@
   },
   "scripts": {
     "lint": "jscs ."
+  },
+  "devDependencies": {
+    "eslint": "^2.4.0"
   }
 }
