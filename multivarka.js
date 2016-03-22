@@ -1,11 +1,11 @@
 const MongoClient = require('mongodb').MongoClient;
 
 function execute(action, callback) {
-    connectToMongo(this, function (err, collection, db, condition) {
+    connectToMongo(this, function (err, response) {
         if (err) {
             callback(err);
         } else {
-            action(callback, collection, db, condition)
+            action(callback, response)
         }
    });
 };
@@ -15,28 +15,22 @@ function connectToMongo(obj, callback) {
         if (err) {
             callback(err);
         } else {
-            var currentCollection = db.collection(obj.collectionName.toString());
-            callback(null, currentCollection, db, obj.request);
+            var response = {};
+            var collection = db.collection(obj.collectionName.toString());
+            response.collection = collection;
+            response.db = db;
+            response.condition = obj._request;
+            callback(null, response);
         }
     });
 };
 
-addCondition = function (operator, value) {
-    var conditionParameter = {};
-    this.request[this.conditionWord] = conditionParameter;
-    conditionParameter[operator] = value;
-    if (this.denial) {
-        this.denial = false;
-    }
-    return this;
-},
-
-module.exports = {
+var multivarka = {
     server: function (uri) {
         this._url = uri;
-        this.request = {};
-        this.denial = false;
-        this.setData = {};
+        this._request = {};
+        this._denial = false;
+        this._setData = {};
         return this;
     },
     collection: function (collectionName) {
@@ -44,7 +38,7 @@ module.exports = {
         return this;
     },
     not: function () {
-        this.denial = true;
+        this._denial = true;
         return this;
     },
     where: function (conditionWord) {
@@ -56,59 +50,69 @@ module.exports = {
         return this;
     },
     equal: function (value) {
-        var operator = this.denial ? '$gte' : '$eq';
-        return addCondition.bind(this)(operator, value);
+        var operator = this._denial ? '$ne' : '$eq';
+        return addCondition(operator, value);
     },
     lessThan: function (value) {
-        var operator = this.denial ? '$ne' : '$lt';
-        return addCondition.bind(this)(operator, value);
+        var operator = this._denial ? '$gte' : '$lt';
+        return addCondition(operator, value);
     },
     greatThan: function (value) {
-        var operator = this.denial ? '$lte' : '$ge';
-        return addCondition.bind(this)(operator, value);
+        var operator = this._denial ? '$lte' : '$gt';
+        return addCondition(operator, value);
     },
     include: function (values) {
-        var operator = this.denial ? '$nin' : '$in';
-        return addCondition.bind(this)(operator, values);
+        var operator = this._denial ? '$nin' : '$in';
+        return addCondition(operator, values);
     },
     remove: function(callback){
-        execute.bind(this)(function(callback, collection, db, condition){
-            collection.deleteMany(condition, function (err, docs) {
+        execute.bind(this)(function(callback, response){
+            response.collection.deleteMany(response.condition, function (err, docs) {
                 callback(err, docs);
-                db.close();
-                this.request = {};
+                response.db.close();
+                this._request = {};
             });
         }, callback)
     },
     find: function(callback){
-        execute.bind(this)(function(callback, collection, db, condition){
-            collection.find(condition).toArray(function (err, docs) {
+        execute.bind(this)(function(callback, response){
+            response.collection.find(response.condition).toArray(function (err, docs) {
                 callback(err, docs);
-                db.close();
-                this.request = {};
+                response.db.close();
+                this._request = {};
             });
         }, callback)
     },
     update: function(callback){
-        execute.bind(this)(function(callback, collection, db, condition){
+        execute.bind(this)(function(callback, response){
             var updateObj = {};
             updateObj.$set = this.set;
             updateObj.$currentDate = {lastModified: true};
-            collection.update(condition, updateObj, function (err, docs) {
+            response.collection.update(response.condition, updateObj, function (err, docs) {
                 callback(err, docs);
-                db.close();
-                this.request = {};
-                this.setData = {};
+                response.db.close();
+                this._request = {};
+                this._setData = {};
             });
         }, callback)
     },
     insert: function(newRecord, callback){
-        execute.bind(this)(function(callback, collection, db, condition){
-            collection.insert(newRecord, function (err, docs) {
+        execute.bind(this)(function(callback, response){
+            response.collection.insert(newRecord, function (err, docs) {
                 callback(err, docs);
-                db.close();
-                this.request = {};
+                response.db.close();
+                this._request = {};
             });
         }, callback)
     }
 };
+
+var addCondition = function (operator, value) {
+    var conditionParameter = {};
+    this._request[this.conditionWord] = conditionParameter;
+    conditionParameter[operator] = value;
+    this._denial = false;
+    return this;
+}.bind(multivarka);
+
+module.exports = multivarka;
